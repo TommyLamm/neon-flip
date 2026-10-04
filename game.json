@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "neon-flip",
   "name": "霓虹反轉",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "極速賽博龐克跑酷！單鍵掌控重力反轉，在上下霓虹導軌間穿梭、極限避障、觸發擦彈狂飆最高分！",
   "author": "TommyLam",
   "entry": "index.html",

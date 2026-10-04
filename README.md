@@ -32,7 +32,7 @@ npm run build
 ---
 
 ## 授權與發布
-本專案嚴格遵循 Playroom 平台接入標準（commit `3728de1c50d4b0263f9f5f279d33d5d205a385fa`）。
+本專案嚴格遵循 Playroom 平台接入標準。
 - 作者：TommyLam
 - 遊戲 ID：`neon-flip`
-- 版本：`1.0.0`
+- 版本：`1.1.0`
