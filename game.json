@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "neon-flip",
+  "name": "霓虹反轉",
+  "version": "1.0.0",
+  "description": "極速賽博龐克跑酷！單鍵掌控重力反轉，在上下霓虹導軌間穿梭、極限避障、觸發擦彈狂飆最高分！",
+  "author": "TommyLam",
+  "entry": "index.html",
+  "cover": "cover.png",
+  "tags": ["街機", "反應", "極速", "節奏", "跑酷"],
+  "instructions": "點擊螢幕、滑鼠左鍵或按空白鍵反轉重力；在地面或天花板穿梭閃避尖刺與雷射，收集霓虹晶體疊加 Combo 倍率。",
+  "devices": ["desktop", "mobile"]
+}
