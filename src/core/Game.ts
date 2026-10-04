@@ -11,6 +11,7 @@ import { InputManager } from './InputManager';
 import { LevelManager } from '../level/LevelManager';
 import { Player } from '../entities/Player';
 import { StorageManager } from './Storage';
+import { Playroom } from '../playroom-sdk';
 
 export class Game {
   private canvas: HTMLCanvasElement;
@@ -18,6 +19,7 @@ export class Game {
 
   private state: GameState = 'TITLE';
   private saveData: SaveData;
+  private currentRunPromise: Promise<{ runId: string } | null> | null = null;
 
   private input: InputManager;
   private audio: SynthAudio;
@@ -149,6 +151,12 @@ export class Game {
     this.state = 'PLAYING';
     this.audio.playBeep(880, 0.12);
     this.audio.startBGM();
+
+    // Playroom 接入：跑酷開始時非阻塞呼叫 startRun
+    this.currentRunPromise = Playroom.startRun().catch((err) => {
+      console.warn('Playroom startRun error:', err);
+      return null;
+    });
   }
 
   private resetGameplayStats(): void {
@@ -163,6 +171,7 @@ export class Game {
     this.comboMeter = 0;
     this.maxCombo = 0;
     this.isNewRecord = false;
+    this.currentRunPromise = null;
   }
 
   private getMultiplier(): number {
@@ -315,7 +324,7 @@ export class Game {
     );
 
     // 結算最高分與儲存
-    const finalScore = Math.floor(this.score);
+    const finalScore = Math.max(0, Math.floor(this.score));
     this.saveData.totalRuns++;
     if (finalScore > this.saveData.highScore) {
       this.saveData.highScore = finalScore;
@@ -325,6 +334,23 @@ export class Game {
       this.saveData.highestCombo = this.maxCombo;
     }
     StorageManager.save(this.saveData);
+
+    // Playroom 接入：角色死亡結算回報分數（非負整數，非阻塞）
+    if (this.currentRunPromise) {
+      const runPromise = this.currentRunPromise;
+      this.currentRunPromise = null;
+      runPromise
+        .then((run) => {
+          if (run?.runId) {
+            Playroom.finishRun({ runId: run.runId, score: finalScore }).catch((err) => {
+              console.warn('Playroom finishRun error:', err);
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('Playroom run promise error:', err);
+        });
+    }
   }
 
   public render(_interpolation: number): void {
