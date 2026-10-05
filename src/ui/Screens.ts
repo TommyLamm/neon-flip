@@ -1,4 +1,5 @@
 import { CONSTANTS } from '../core/Constants';
+import { ZoneType } from '../types';
 
 export class Screens {
   // 1. 標題畫面
@@ -33,10 +34,10 @@ export class Screens {
     ctx.fillText('霓 虹 反 轉', width / 2, titleY + 54);
 
     // 操作教學圖解簡介
-    ctx.font = '16px sans-serif';
+    ctx.font = '15px sans-serif';
     ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillText('單鍵反轉重力 ✦ 避開尖刺雷射 ✦ 極限擦彈刷分', width / 2, titleY + 104);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.fillText('單鍵掌控重力 ✦ 三大多元主題區域 ✦ 拾取幽靈稜鏡獲得護盾 ✦ 極限擦彈刷分', width / 2, titleY + 104);
 
     // 歷史最高分
     if (highScore > 0) {
@@ -90,31 +91,32 @@ export class Screens {
     highScore: number,
     maxCombo: number,
     isNewRecord: boolean,
+    finalZone: ZoneType,
     animTime: number
   ): void {
     ctx.save();
     // 半透明深邃暗色底罩
-    ctx.fillStyle = 'rgba(8, 3, 18, 0.78)';
+    ctx.fillStyle = 'rgba(8, 3, 18, 0.82)';
     ctx.fillRect(0, 0, width, height);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    const centerY = height * 0.4;
+    const centerY = height * 0.38;
 
     // 故障訊號中斷標題
     ctx.font = '900 48px monospace';
     ctx.fillStyle = CONSTANTS.COLORS.RED;
     ctx.shadowColor = CONSTANTS.COLORS.RED;
-    ctx.shadowBlur = 20;
-    ctx.fillText('SIGNAL LOST', width / 2, centerY - 60);
+    ctx.shadowBlur = 22;
+    ctx.fillText('SIGNAL LOST', width / 2, centerY - 64);
 
     // 本次得分
     ctx.font = 'bold 54px monospace';
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = CONSTANTS.COLORS.CYAN;
     ctx.shadowBlur = 16;
-    ctx.fillText(`${Math.floor(score)}`, width / 2, centerY + 8);
+    ctx.fillText(`${Math.floor(score)}`, width / 2, centerY + 6);
 
     // 新紀錄獎章
     if (isNewRecord) {
@@ -130,10 +132,15 @@ export class Screens {
       ctx.fillText(`BEST: ${highScore}`, width / 2, centerY + 54);
     }
 
-    // 最高連擊
-    ctx.font = '16px sans-serif';
+    // 最終抵達區域與最高連擊
+    const zoneInfo = CONSTANTS.ZONES[finalZone];
+    ctx.font = 'bold 16px monospace';
+    ctx.fillStyle = zoneInfo.primaryColor;
+    ctx.fillText(`FINAL ZONE: ${zoneInfo.name.toUpperCase()}`, width / 2, centerY + 88);
+
+    ctx.font = '15px sans-serif';
     ctx.fillStyle = CONSTANTS.COLORS.MAGENTA;
-    ctx.fillText(`MAX COMBO: ${maxCombo}`, width / 2, centerY + 88);
+    ctx.fillText(`MAX COMBO: ${maxCombo}`, width / 2, centerY + 114);
 
     // 一鍵立即重開提示
     const pulseAlpha = 0.5 + 0.5 * Math.sin(animTime * 6);
@@ -146,3 +153,4 @@ export class Screens {
     ctx.restore();
   }
 }
+

@@ -4,8 +4,10 @@ export class Obstacle {
   public type: ObstacleType = 'SPIKE_BOTTOM';
   public x = 0;
   public y = 0;
+  public baseY = 0;
   public width = 36;
   public height = 40;
+  public baseHeight = 40;
   public active = true;
   public nearMissTriggered = false;
 
@@ -14,32 +16,50 @@ export class Obstacle {
   public laserTimer = 0;
   public isLaserActive = true;
 
+  // 往復運動與伸縮屬性
+  public oscillateRange = 0;
+  public oscillateSpeed = 2.0;
+
   public reset(
     type: ObstacleType,
     x: number,
     y: number,
     width: number,
     height: number,
-    period = 1.2
+    period = 1.2,
+    oscillateRange = 0,
+    oscillateSpeed = 2.0
   ): void {
     this.type = type;
     this.x = x;
     this.y = y;
+    this.baseY = y;
     this.width = width;
     this.height = height;
+    this.baseHeight = height;
     this.active = true;
     this.nearMissTriggered = false;
     this.period = period;
-    this.laserTimer = 0;
+    this.laserTimer = Math.random() * Math.PI * 2; // 錯開初始相位
     this.isLaserActive = true;
+    this.oscillateRange = oscillateRange;
+    this.oscillateSpeed = oscillateSpeed;
   }
 
   public update(dt: number): void {
+    this.laserTimer += dt;
+
     if (this.type === 'LASER_GATE') {
-      this.laserTimer += dt;
       // 週期性開闔：例如 0 ~ 0.8s 閉合 (致命)，0.8 ~ 1.2s 打開 (通行)
       const cycle = this.laserTimer % this.period;
       this.isLaserActive = cycle < this.period * 0.65;
+    } else if (this.type === 'OSCILLATING_LASER') {
+      // 動態上下往復伸縮的垂直雷射光柱
+      if (this.oscillateRange > 0) {
+        const offset = Math.sin(this.laserTimer * this.oscillateSpeed) * this.oscillateRange;
+        this.y = this.baseY + offset;
+      }
+      this.isLaserActive = true;
     }
   }
 
@@ -57,8 +77,17 @@ export class Obstacle {
       };
     }
 
+    if (this.type === 'OSCILLATING_LASER') {
+      return {
+        x: this.x + 4,
+        y: this.y,
+        width: this.width - 8,
+        height: this.height,
+      };
+    }
+
     if (this.type === 'SPIKE_BOTTOM') {
-      // 尖刺為三角形，給予邊緣 4px 寬容度
+      // 尖刺為三角形，給予邊緣 6px 寬容度
       return {
         x: this.x + 6,
         y: this.y + 6,
@@ -118,3 +147,4 @@ export class Obstacle {
     return false;
   }
 }
+

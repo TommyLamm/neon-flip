@@ -5,7 +5,7 @@ import { CanvasRenderer } from '../render/CanvasRenderer';
 import { ParticleSystem } from '../render/ParticleSystem';
 import { HUD } from '../ui/HUD';
 import { Screens } from '../ui/Screens';
-import { GameState, SaveData } from '../types';
+import { GameState, SaveData, ZoneType } from '../types';
 import { CONSTANTS } from './Constants';
 import { InputManager } from './InputManager';
 import { LevelManager } from '../level/LevelManager';
@@ -44,6 +44,10 @@ export class Game {
   private isNewRecord = false;
   private uiAnimTime = 0;
 
+  // 主題區域與橫幅
+  private currentZone: ZoneType = 'CYBER_STRIP';
+  private zoneBannerTimer = 0;
+
   // 倒數計時器
   private countdownTimer = 0;
   private countdownStep = 3;
@@ -64,6 +68,17 @@ export class Game {
 
     this.handleResize();
     this.setupInput();
+    this.setupZoneListener();
+  }
+
+  private setupZoneListener(): void {
+    this.level.onZoneChange = (newZone: ZoneType) => {
+      this.currentZone = newZone;
+      this.player.gravityMultiplier = this.level.getZoneGravityMultiplier();
+      this.zoneBannerTimer = 2.2;
+      this.audio.playZoneChange();
+      this.camera.addShake(4, 0.2);
+    };
   }
 
   public handleResize(): void {
@@ -85,7 +100,6 @@ export class Game {
     let trackHeight = CONSTANTS.TRACK_HEIGHT;
 
     if (isPortrait) {
-      // 直向螢幕：導軌適當拉寬，留出更寬廣的滑行與反應空間
       trackHeight = Math.min(clientHeight * 0.65, 520);
     } else {
       trackHeight = Math.min(clientHeight * 0.72, 460);
@@ -116,7 +130,6 @@ export class Game {
       if (this.state === 'TITLE') {
         this.startCountdown();
       } else if (this.state === 'COUNTDOWN') {
-        // 倒數時再次點擊可直接秒進遊戲
         this.startGameplay();
       } else if (this.state === 'PLAYING') {
         this.triggerPlayerFlip();
@@ -171,6 +184,8 @@ export class Game {
     this.comboMeter = 0;
     this.maxCombo = 0;
     this.isNewRecord = false;
+    this.currentZone = 'CYBER_STRIP';
+    this.zoneBannerTimer = 0;
     this.currentRunPromise = null;
   }
 
@@ -184,6 +199,11 @@ export class Game {
 
   public update(dt: number): void {
     this.uiAnimTime += dt;
+
+    if (this.zoneBannerTimer > 0) {
+      this.zoneBannerTimer -= dt;
+      if (this.zoneBannerTimer < 0) this.zoneBannerTimer = 0;
+    }
 
     if (this.state === 'COUNTDOWN') {
       this.countdownTimer -= dt;
@@ -206,7 +226,7 @@ export class Game {
 
     // 檢查 Hit-Stop
     if (this.camera.isHitStopped()) {
-      this.camera.update(dt, this.player.x);
+      this.camera.update(dt, this.player.x, 260, this.currentSpeed);
       return;
     }
 
@@ -227,13 +247,13 @@ export class Game {
     // 更新關卡生成與障礙物
     this.level.update(dt, this.player.x);
 
-    // 更新相機追隨
+    // 更新相機追隨（包含高移速空間微震動）
     const lookAhead = Math.min(320, this.width * 0.28);
-    this.camera.update(dt, this.player.x, lookAhead);
+    this.camera.update(dt, this.player.x, lookAhead, this.currentSpeed);
 
     // 更新粒子
     this.particles.update(dt);
-    if (Math.random() < 0.6) {
+    if (Math.random() < 0.65) {
       this.particles.emitTrail(
         this.player.x,
         this.player.y + this.player.height / 2,
@@ -254,32 +274,64 @@ export class Game {
     // 行進得分
     this.score += (this.currentSpeed * dt * 0.1) * this.getMultiplier();
 
-    // 碰撞與擦彈判定
-    const playerHitbox = this.player.getHitbox();
-    const playerNearMissBox = this.player.getNearMissBox();
+    // ==========================================
+    // 連續碰撞檢測 (Continuous Collision Detection, CCD)
+    // ==========================================
+    const moveDist = Math.hypot(this.player.x - this.player.prevX, this.player.y - this.player.prevY);
+    const subSteps = Math.max(1, Math.ceil(moveDist / 6.0)); // 每步最多 6px，精確防穿透
     const obstacles = this.level.getActiveObstacles();
 
-    for (const obs of obstacles) {
-      if (!obs.active) continue;
+    for (let step = 1; step <= subSteps; step++) {
+      const t = step / subSteps;
+      const stepX = this.player.prevX + (this.player.x - this.player.prevX) * t;
+      const stepY = this.player.prevY + (this.player.y - this.player.prevY) * t;
+      const stepHitbox = this.player.getHitboxAt(stepX, stepY);
+      const stepNearMissBox = {
+        x: stepX - CONSTANTS.NEAR_MISS_RADIUS,
+        y: stepY - CONSTANTS.NEAR_MISS_RADIUS,
+        width: this.player.width + CONSTANTS.NEAR_MISS_RADIUS * 2,
+        height: this.player.height + CONSTANTS.NEAR_MISS_RADIUS * 2,
+      };
 
-      // 1. 致命碰撞
-      if (obs.intersects(playerHitbox)) {
-        this.handleGameOver();
-        return;
-      }
+      for (const obs of obstacles) {
+        if (!obs.active) continue;
 
-      // 2. 極限擦彈
-      if (obs.checkNearMiss(playerNearMissBox, playerHitbox)) {
-        this.handleNearMiss();
+        // 1. 致命碰撞檢查
+        if (obs.intersects(stepHitbox)) {
+          // 若玩家持有幽靈稜鏡護盾，抵擋一次傷害！
+          if (this.player.hasShield) {
+            this.player.hasShield = false;
+            this.player.invulnerableTimer = CONSTANTS.SHIELD_INVULNERABLE_TIME;
+            this.audio.playShieldBreak();
+            this.camera.addShake(7.5, 0.25);
+            this.camera.triggerHitStop(0.04);
+            this.particles.emitShieldBreak(
+              stepHitbox.x + stepHitbox.width / 2,
+              stepHitbox.y + stepHitbox.height / 2
+            );
+            // 護盾消耗後安全穿透本障礙
+            break;
+          } else if (this.player.invulnerableTimer <= 0) {
+            // 無護盾且非無敵狀態：立即結算
+            this.handleGameOver();
+            return;
+          }
+        }
+
+        // 2. 極限擦彈檢查
+        if (obs.checkNearMiss(stepNearMissBox, stepHitbox)) {
+          this.handleNearMiss();
+        }
       }
     }
 
-    // 能量晶體收集判定
+    // 能量晶體與稀有幽靈稜鏡收集判定
+    const playerFinalHitbox = this.player.getHitbox();
     const shards = this.level.getActiveShards();
     for (const shard of shards) {
-      if (shard.intersects(playerHitbox)) {
+      if (shard.intersects(playerFinalHitbox)) {
         shard.collected = true;
-        this.handleCollectShard(shard.x, shard.y);
+        this.handleCollectShard(shard.x, shard.y, shard.isShieldPrism);
       }
     }
   }
@@ -299,14 +351,24 @@ export class Game {
     this.score += CONSTANTS.NEAR_MISS_POINTS * this.getMultiplier();
   }
 
-  private handleCollectShard(x: number, y: number): void {
-    this.audio.playShard();
-    this.particles.emitNearMiss(x, y, CONSTANTS.COLORS.GOLD);
-
-    this.combo++;
-    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-    this.comboMeter = Math.min(CONSTANTS.COMBO_MAX, this.comboMeter + CONSTANTS.COMBO_SHARD_ADD);
-    this.score += CONSTANTS.SHARD_POINTS * this.getMultiplier();
+  private handleCollectShard(x: number, y: number, isShieldPrism = false): void {
+    if (isShieldPrism) {
+      // 拾取稀有幽靈稜鏡護盾
+      this.player.hasShield = true;
+      this.audio.playShieldGet();
+      this.particles.emitShockwave(x, y, '#00f3ff');
+      this.particles.emitNearMiss(x, y, '#ffffff');
+      this.score += CONSTANTS.SHIELD_PRISM_POINTS * this.getMultiplier();
+      this.camera.addShake(3, 0.15);
+    } else {
+      // 拾取普通晶體
+      this.audio.playShard();
+      this.particles.emitNearMiss(x, y, CONSTANTS.COLORS.GOLD);
+      this.combo++;
+      if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+      this.comboMeter = Math.min(CONSTANTS.COMBO_MAX, this.comboMeter + CONSTANTS.COMBO_SHARD_ADD);
+      this.score += CONSTANTS.SHARD_POINTS * this.getMultiplier();
+    }
   }
 
   private handleGameOver(): void {
@@ -333,6 +395,7 @@ export class Game {
     if (this.maxCombo > this.saveData.highestCombo) {
       this.saveData.highestCombo = this.maxCombo;
     }
+    this.saveData.bestZone = this.currentZone;
     StorageManager.save(this.saveData);
 
     // Playroom 接入：角色死亡結算回報分數（非負整數，非阻塞）
@@ -364,7 +427,7 @@ export class Game {
 
     const isHyper = this.getMultiplier() >= 5.0;
 
-    // 1. 繪製背景與賽博網格
+    // 1. 繪製多層次背景與天際線
     this.background.render(
       ctx,
       this.camera.x,
@@ -372,38 +435,55 @@ export class Game {
       this.ceilingY,
       this.floorY,
       width,
-      height
+      height,
+      this.currentSpeed,
+      this.currentZone
     );
 
-    // 2. 繪製發光導軌
+    // 2. 空間曲速流線 (Speed Lines)
+    CanvasRenderer.renderSpeedLines(
+      ctx,
+      width,
+      this.ceilingY,
+      this.floorY,
+      this.currentSpeed,
+      this.camera.x,
+      isHyper
+    );
+
+    // 3. 繪製發光導軌
     CanvasRenderer.renderTracks(
       ctx,
       this.ceilingY,
       this.floorY,
       width,
       this.camera.x,
-      isHyper
+      isHyper,
+      this.currentSpeed
     );
 
-    // 3. 繪製障礙物
+    // 4. 繪製障礙物
     for (const obs of this.level.getActiveObstacles()) {
       CanvasRenderer.renderObstacle(ctx, obs, this.camera.x);
     }
 
-    // 4. 繪製晶體
+    // 5. 繪製晶體與幽靈稜鏡
     for (const shard of this.level.getActiveShards()) {
       CanvasRenderer.renderShard(ctx, shard, this.camera.x);
     }
 
-    // 5. 繪製粒子
+    // 6. 繪製粒子
     this.particles.render(ctx, this.camera.x);
 
-    // 6. 繪製玩家（在 GAME_OVER 碎裂後隱藏本體）
+    // 7. 繪製玩家（在 GAME_OVER 碎裂後隱藏本體）
     if (this.state !== 'GAME_OVER') {
-      CanvasRenderer.renderPlayer(ctx, this.player, this.camera.x, isHyper);
+      CanvasRenderer.renderPlayer(ctx, this.player, this.camera.x, isHyper, this.currentSpeed);
     }
 
-    // 7. 繪製 HUD
+    // 8. 全螢幕高速色像差暗角邊緣濾鏡
+    CanvasRenderer.renderSpeedVignette(ctx, width, height, this.currentSpeed);
+
+    // 9. 繪製 HUD（包含 Zone 標籤與 Banner）
     HUD.render(
       ctx,
       this.score,
@@ -413,10 +493,14 @@ export class Game {
       this.currentSpeed,
       isHyper,
       this.audio.isMuted,
-      width
+      this.player.hasShield,
+      this.currentZone,
+      this.zoneBannerTimer,
+      width,
+      height
     );
 
-    // 8. 狀態畫面覆蓋 (Title / Countdown / GameOver)
+    // 10. 狀態畫面覆蓋 (Title / Countdown / GameOver)
     if (this.state === 'TITLE') {
       Screens.renderTitle(ctx, width, height, this.saveData.highScore, this.uiAnimTime);
     } else if (this.state === 'COUNTDOWN') {
@@ -430,6 +514,7 @@ export class Game {
         this.saveData.highScore,
         this.maxCombo,
         this.isNewRecord,
+        this.currentZone,
         this.uiAnimTime
       );
     }
@@ -437,3 +522,4 @@ export class Game {
     ctx.restore();
   }
 }
+

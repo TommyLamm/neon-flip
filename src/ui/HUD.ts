@@ -1,4 +1,5 @@
-import { CONSTANTS } from '../core/Constants';
+import { CONSTANTS, getSpeedColor } from '../core/Constants';
+import { ZoneType } from '../types';
 
 export class HUD {
   public static isMuteButtonClicked(
@@ -26,9 +27,15 @@ export class HUD {
     speed: number,
     isHyper: boolean,
     isMuted: boolean,
-    width: number
+    hasShield: boolean,
+    currentZone: ZoneType,
+    zoneBannerTimer: number,
+    width: number,
+    height: number
   ): void {
     ctx.save();
+    const speedInfo = getSpeedColor(speed);
+    const zoneConfig = CONSTANTS.ZONES[currentZone];
 
     // 1. 分數與最高分 (頂部左側)
     ctx.textAlign = 'left';
@@ -37,15 +44,22 @@ export class HUD {
     // 當前分數
     ctx.font = 'bold 32px monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = isHyper ? CONSTANTS.COLORS.GOLD : CONSTANTS.COLORS.CYAN;
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = isHyper ? CONSTANTS.COLORS.GOLD : speedInfo.glow;
+    ctx.shadowBlur = 12;
     ctx.fillText(`${Math.floor(score)}`, 24, 20);
 
     // 最高分提示
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '13px monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
     ctx.shadowBlur = 0;
     ctx.fillText(`BEST: ${highScore}`, 24, 58);
+
+    // 當前 Zone 指示標籤 (左上角分數下方)
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = zoneConfig.primaryColor;
+    ctx.shadowColor = zoneConfig.primaryColor;
+    ctx.shadowBlur = 6;
+    ctx.fillText(`ZONE // ${zoneConfig.name.toUpperCase()}`, 24, 78);
 
     // 2. Combo 計量條與倍率 (頂部中央)
     const meterWidth = Math.min(240, width * 0.35);
@@ -54,6 +68,7 @@ export class HUD {
     const meterY = 24;
 
     // 外框底槽
+    ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(meterX, meterY, meterWidth, meterHeight);
@@ -79,19 +94,45 @@ export class HUD {
       const mult = combo >= 10 ? '3.0' : combo >= 6 ? '2.0' : combo >= 3 ? '1.5' : '1.0';
       ctx.fillText(`${combo} COMBO (x${mult})`, width / 2, meterY + 14);
     } else {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
       ctx.shadowBlur = 0;
       ctx.font = '12px sans-serif';
       ctx.fillText('SPEED RUNNER', width / 2, meterY + 15);
     }
 
-    // 3. 速度指示器 (底部中央偏下)
+    // 3. 速度指示器 (頂部中央偏下)
     ctx.textAlign = 'center';
     ctx.font = '12px monospace';
-    ctx.fillStyle = 'rgba(0, 243, 255, 0.7)';
-    ctx.fillText(`${Math.floor(speed)} PX/S`, width / 2, 76);
+    ctx.fillStyle = speedInfo.glow;
+    ctx.shadowColor = speedInfo.glow;
+    ctx.shadowBlur = 4;
+    ctx.fillText(`${Math.floor(speed)} PX/S`, width / 2, 74);
 
-    // 4. 靜音開關按鈕 (右上角，觸控目標 48x48)
+    // 4. 幽靈稜鏡護盾圖示 (SHIELD ACTIVE - 頂部偏右)
+    if (hasShield) {
+      const shieldX = width - 180;
+      const shieldY = 22;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 243, 255, 0.15)';
+      ctx.strokeStyle = '#00f3ff';
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = '#00f3ff';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.roundRect(shieldX, shieldY, 110, 32, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('◆ SHIELD', shieldX + 55, shieldY + 16);
+      ctx.restore();
+    }
+
+    // 5. 靜音開關按鈕 (右上角，觸控目標 48x48)
     const btnSize = 44;
     const btnX = width - btnSize - 16;
     const btnY = 16;
@@ -138,6 +179,54 @@ export class HUD {
     }
     ctx.restore();
 
+    // 6. 區域切換動態橫幅動畫 (Zone Banner Notification)
+    if (zoneBannerTimer > 0) {
+      const bannerAlpha = Math.min(1, zoneBannerTimer / 0.5, (2.2 - (2.2 - zoneBannerTimer)) / 0.5);
+      const bannerY = height * 0.22;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, bannerAlpha);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // 橫向霓虹暗色背板
+      const grad = ctx.createLinearGradient(width / 2 - 250, bannerY, width / 2 + 250, bannerY);
+      grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      grad.addColorStop(0.3, 'rgba(12, 4, 24, 0.88)');
+      grad.addColorStop(0.7, 'rgba(12, 4, 24, 0.88)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(width / 2 - 250, bannerY - 26, 500, 52);
+
+      // 上下霓虹邊線
+      ctx.strokeStyle = zoneConfig.primaryColor;
+      ctx.shadowColor = zoneConfig.primaryColor;
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(width / 2 - 220, bannerY - 26);
+      ctx.lineTo(width / 2 + 220, bannerY - 26);
+      ctx.moveTo(width / 2 - 220, bannerY + 26);
+      ctx.lineTo(width / 2 + 220, bannerY + 26);
+      ctx.stroke();
+
+      // 主文字
+      ctx.font = '900 24px monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = zoneConfig.primaryColor;
+      ctx.shadowBlur = 16;
+      ctx.fillText(`ENTER >> ${zoneConfig.name.toUpperCase()}`, width / 2, bannerY - 4);
+
+      // 副文字
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = zoneConfig.secondaryColor;
+      ctx.shadowBlur = 6;
+      ctx.fillText(zoneConfig.subtitle, width / 2, bannerY + 14);
+
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 }
+

@@ -7,17 +7,20 @@ export class Shard {
   public active = true;
   public collected = false;
   public pulseTimer = 0;
+  public isShieldPrism = false;
 
-  public reset(x: number, y: number): void {
+  public reset(x: number, y: number, isShieldPrism = false): void {
     this.x = x;
     this.y = y;
     this.active = true;
     this.collected = false;
     this.pulseTimer = Math.random() * Math.PI * 2;
+    this.isShieldPrism = isShieldPrism;
+    this.size = isShieldPrism ? 26 : 18;
   }
 
   public update(dt: number): void {
-    this.pulseTimer += dt * 4;
+    this.pulseTimer += dt * (this.isShieldPrism ? 5 : 4);
   }
 
   public intersects(rect: Rect): boolean {
@@ -31,3 +34,4 @@ export class Shard {
     );
   }
 }
+

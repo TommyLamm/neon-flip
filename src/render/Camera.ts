@@ -10,7 +10,7 @@ export class Camera {
 
   private hitStopTimer = 0;
 
-  public update(dt: number, playerX: number, targetLead = 260): void {
+  public update(dt: number, playerX: number, targetLead = 260, currentSpeed = 420): void {
     if (this.hitStopTimer > 0) {
       this.hitStopTimer -= dt;
       if (this.hitStopTimer < 0) this.hitStopTimer = 0;
@@ -19,17 +19,27 @@ export class Camera {
     // 平滑水平相機追隨
     this.x = playerX - targetLead;
 
-    // 螢幕震動衰減運算
+    // 螢幕衝擊震動衰減運算
+    let sx = 0;
+    let sy = 0;
     if (this.shakeTimer > 0) {
       this.shakeTimer -= dt;
       const progress = Math.max(0, this.shakeTimer / this.shakeDuration);
       const currentIntensity = this.shakeIntensity * progress;
-      this.shakeX = (Math.random() - 0.5) * 2 * currentIntensity;
-      this.shakeY = (Math.random() - 0.5) * 2 * currentIntensity;
-    } else {
-      this.shakeX = 0;
-      this.shakeY = 0;
+      sx = (Math.random() - 0.5) * 2 * currentIntensity;
+      sy = (Math.random() - 0.5) * 2 * currentIntensity;
     }
+
+    // 高移速空間微震動 (Speed Rumble: > 700 px/s 時開始啟動)
+    if (currentSpeed > 700) {
+      const rumbleRatio = Math.min(1, (currentSpeed - 700) / 260);
+      const rumbleAmount = rumbleRatio * 1.5;
+      sx += (Math.random() - 0.5) * 2 * rumbleAmount;
+      sy += (Math.random() - 0.5) * 2 * rumbleAmount;
+    }
+
+    this.shakeX = sx;
+    this.shakeY = sy;
   }
 
   public addShake(intensity: number, duration: number): void {
@@ -56,3 +66,4 @@ export class Camera {
     this.hitStopTimer = 0;
   }
 }
+

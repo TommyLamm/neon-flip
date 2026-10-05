@@ -1,6 +1,6 @@
 import { ObjectPool } from '../entities/Pool';
 
-export type ParticleType = 'TRAIL' | 'SHOCKWAVE' | 'SPARK' | 'CYBER_SHATTER';
+export type ParticleType = 'TRAIL' | 'SHOCKWAVE' | 'SPARK' | 'CYBER_SHATTER' | 'SHIELD_SHATTER';
 
 export class Particle {
   public type: ParticleType = 'SPARK';
@@ -52,7 +52,7 @@ export class Particle {
 
     if (this.type === 'SHOCKWAVE') {
       const progress = 1 - this.life / this.maxLife;
-      this.radius = progress * 48;
+      this.radius = progress * 64;
     } else {
       this.x += this.vx * dt;
       this.y += this.vy * dt;
@@ -60,6 +60,9 @@ export class Particle {
 
       if (this.type === 'CYBER_SHATTER') {
         this.vy += 800 * dt; // 碎裂光片受重力下墜
+      } else if (this.type === 'SHIELD_SHATTER') {
+        this.vx *= 0.95;
+        this.vy *= 0.95;
       } else if (this.type === 'SPARK') {
         this.vx *= 0.94;
         this.vy *= 0.94;
@@ -77,7 +80,7 @@ export class ParticleSystem {
       (p) => {
         p.active = false;
       },
-      350
+      450
     );
   }
 
@@ -87,12 +90,12 @@ export class ParticleSystem {
 
   public emitTrail(x: number, y: number, color: string): void {
     const p = this.pool.obtain();
-    p.reset('TRAIL', x, y, -40, (Math.random() - 0.5) * 20, 4, color, 0.25);
+    p.reset('TRAIL', x, y, -50, (Math.random() - 0.5) * 24, 4, color, 0.28);
   }
 
   public emitShockwave(x: number, y: number, color: string): void {
     const p = this.pool.obtain();
-    p.reset('SHOCKWAVE', x, y, 0, 0, 2, color, 0.2);
+    p.reset('SHOCKWAVE', x, y, 0, 0, 2, color, 0.24);
   }
 
   public emitNearMiss(x: number, y: number, color: string): void {
@@ -109,6 +112,31 @@ export class ParticleSystem {
         5,
         color,
         0.35 + Math.random() * 0.15
+      );
+    }
+  }
+
+  public emitShieldBreak(x: number, y: number): void {
+    // 雙重衝擊波
+    this.emitShockwave(x, y, '#ffffff');
+    this.emitShockwave(x, y, '#00f3ff');
+
+    // 噴射 30 枚全息護盾菱形碎片
+    for (let i = 0; i < 30; i++) {
+      const angle = (Math.PI * 2 * i) / 30 + (Math.random() - 0.5) * 0.5;
+      const speed = 180 + Math.random() * 320;
+      const p = this.pool.obtain();
+      const color = i % 2 === 0 ? '#00f3ff' : '#ffffff';
+      p.reset(
+        'SHIELD_SHATTER',
+        x,
+        y,
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed,
+        7 + Math.random() * 6,
+        color,
+        0.5 + Math.random() * 0.3,
+        (Math.random() - 0.5) * 12
       );
     }
   }
@@ -158,7 +186,7 @@ export class ParticleSystem {
       if (p.type === 'SHOCKWAVE') {
         ctx.beginPath();
         ctx.arc(screenX, p.y, p.radius, 0, Math.PI * 2);
-        ctx.lineWidth = 3 * alpha;
+        ctx.lineWidth = 3.5 * alpha;
         ctx.stroke();
       } else if (p.type === 'CYBER_SHATTER') {
         ctx.translate(screenX, p.y);
@@ -169,6 +197,17 @@ export class ParticleSystem {
         ctx.lineTo(-p.size, p.size);
         ctx.closePath();
         ctx.fill();
+      } else if (p.type === 'SHIELD_SHATTER') {
+        // 菱形晶片
+        ctx.translate(screenX, p.y);
+        ctx.rotate(p.rotation);
+        ctx.beginPath();
+        ctx.moveTo(0, -p.size);
+        ctx.lineTo(p.size * 0.7, 0);
+        ctx.lineTo(0, p.size);
+        ctx.lineTo(-p.size * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
       } else {
         ctx.fillRect(screenX - p.size / 2, p.y - p.size / 2, p.size, p.size);
       }
@@ -177,3 +216,4 @@ export class ParticleSystem {
     ctx.restore();
   }
 }
+
